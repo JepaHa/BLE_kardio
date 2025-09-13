@@ -1,7 +1,4 @@
 cmake_minimum_required(VERSION 3.27)
-if(NOT DEFINED ENV{BOARD})
-  set(BOARD "nucleo_l452re")
-endif()
 
 # Helper function to find Zephyr base from west top directory
 function(zephyr_base_from_west_topdir)
