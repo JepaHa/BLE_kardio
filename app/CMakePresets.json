@@ -1,0 +1,119 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 27,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Release build using Ninja generator",
+      "generator": "Ninja",
+      "binaryDir": "${sourceParentDir}/build",
+      "installDir": "${sourceParentDir}"
+    },
+    {
+      "name": "debug",
+      "inherits": "release",
+      "displayName": "Debug",
+      "description": "Debug build using Ninja generator",
+      "cacheVariables": {
+        "EXTRA_CONF_FILE": "${sourceDir}/debug.conf"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "install-debug",
+      "inherits": "debug",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "install",
+      "inherits": "release",
+      "targets": [
+        "install"
+      ]
+    },
+    {
+      "name": "flash-debug",
+      "inherits": "debug",
+      "targets": [
+        "flash"
+      ]
+    },
+    {
+      "name": "flash",
+      "inherits": "release",
+      "targets": [
+        "flash"
+      ]
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "debug"
+        }
+      ]
+    },
+    {
+      "name": "release",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "release"
+        },
+        {
+          "type": "build",
+          "name": "release"
+        }
+      ]
+    },
+    {
+      "name": "flash-debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "debug"
+        },
+        {
+          "type": "build",
+          "name": "flash-debug"
+        }
+      ]
+    },
+    {
+      "name": "flash",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "release"
+        },
+        {
+          "type": "build",
+          "name": "flash"
+        }
+      ]
+    }
+  ]
+}

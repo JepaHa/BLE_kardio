@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "openocd-launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "gdbPath": "/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+                "${workspaceFolder}/deps/zephyr/zephyr/boards/st/nucleo_f103rb/support/openocd.cfg"
+            ]
+        },
+        {
+            "name": "openocd-attach",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+            "request": "attach",
+            "type": "cortex-debug",
+            "gdbPath": "/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "runToEntryPoint": "main",
+            "servertype": "openocd",
+            "configFiles": [
+                "${workspaceFolder}/deps/zephyr/zephyr/boards/st/nucleo_f103rb/support/openocd.cfg"
+            ]
+        },
+    ],
+}

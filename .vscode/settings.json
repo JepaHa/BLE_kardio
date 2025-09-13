@@ -1,0 +1,32 @@
+{
+    "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+    "C_Cpp.formatting": "clangFormat",
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+    },
+    "cmake.allowUnsupportedPresetsVersions": true,
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.sourceDirectory": [
+        "${workspaceFolder}/app",
+    ],
+    "devicetree.modules": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/deps/zephyr/zephyr",
+        "${workspaceFolder}/deps/zephyr/modules/hal/*",
+        "${workspaceFolder}/deps/fwlib/*",
+    ],
+    "devicetree.zephyr": "${workspaceFolder}/deps/zephyr/zephyr",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": true,
+    "git.scanRepositories": [
+        ".",
+        "deps/zephyr/zephyr",
+        "deps/zephyr/modules/hal/cmsis",
+        "deps/zephyr/modules/hal/stm32",
+    ],
+    "kconfig.zephyr.base": "${workspaceFolder}/deps/zephyr/zephyr"
+}

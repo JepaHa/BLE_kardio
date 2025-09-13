@@ -1,0 +1,12 @@
+*~
+build*/
+demos/
+deps/
+.DS_Store
+app/.DS_STORE
+ecovisor.code-workspace
+
+CMakeUserPresets.json
+.cache
+.venv
+.idea

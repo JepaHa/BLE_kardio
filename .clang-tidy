@@ -1,0 +1,13 @@
+---
+Checks: 'clang-diagnostic-*,clang-analyzer-*,*,-clang-analyzer-alpha.*, \
+        -llvm-include-order,-fuchsia-default-arguments,-altera-unroll-loops, \
+        -altera-struct-pack-align, -hicpp-signed-bitwise, \
+        -readability-function-cognitive-complexity, \
+        -llvmlibc-restrict-system-libc-headers, \
+        -concurrency-mt-unsafe, \
+        -cppcoreguidelines-interfaces-global-init, \
+        -cppcoreguidelines-avoid-non-const-global-variables'
+WarningsAsErrors: ''
+HeaderFilterRegex: ''
+AnalyzeTemporaryDtors: false
+FormatStyle: file
