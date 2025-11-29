@@ -54,20 +54,25 @@ int ble_advertising_stop(void)
     int err;
 
     if (!advertising_active) {
-        LOG_WRN("Advertising not active");
+        /* Already stopped, but try to stop anyway to ensure clean state */
+        bt_le_adv_stop();
         return 0;
     }
 
     LOG_INF("Stopping BLE advertising...");
 
     err = bt_le_adv_stop();
+    /* Always reset flag, even if stop returns error (stack may have already
+     * stopped it) */
+    advertising_active = false;
+
     if (err) {
-        LOG_ERR("Failed to stop advertising (err %d)", err);
-        return err;
+        LOG_WRN("Advertising stop returned error (err %d), but flag reset",
+                err);
+        /* Don't return error, as advertising is effectively stopped */
+        return 0;
     }
 
-    advertising_active = false;
     LOG_INF("Advertising stopped");
-
     return 0;
 }

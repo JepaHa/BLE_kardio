@@ -12,11 +12,34 @@
 
 LOG_MODULE_REGISTER(ble_init, CONFIG_LOG_DEFAULT_LEVEL);
 
+static struct k_work_delayable adv_restart_work;
+
+static void adv_restart_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+    int err = ble_advertising_start();
+    if (err) {
+        ble_log_error("Failed to restart advertising (err %d), retrying...",
+                      err);
+        /* Retry after another delay if failed */
+        k_work_schedule(&adv_restart_work, K_MSEC(500));
+    } else {
+        ble_log_info("Advertising restarted successfully");
+    }
+}
+
 static void connected(struct bt_conn *conn, uint8_t err)
 {
     ble_log_connected(conn, err);
 
     if (!err) {
+        /* Cancel any pending advertising restart */
+        k_work_cancel_delayable(&adv_restart_work);
+
+        /* Stop advertising when connected */
+        ble_advertising_stop();
+        ble_log_info("Advertising stopped (connected)");
+
         /* Set connection for HRS service */
         hrs_set_connection(conn);
 
@@ -37,6 +60,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
     /* Clear connection for HRS service */
     hrs_set_connection(NULL);
+
+    /* Restart advertising when disconnected with delay to allow stack to free
+     * resources */
+    /* Delay of 100ms should be enough for stack to clean up */
+    k_work_schedule(&adv_restart_work, K_MSEC(100));
+    ble_log_info("Advertising restart scheduled (disconnected)");
 }
 
 #if defined(CONFIG_BT_SMP) || defined(CONFIG_BT_CLASSIC)
@@ -61,6 +90,9 @@ int ble_init(void)
 
     /* Initialize deferred logging */
     ble_log_init();
+
+    /* Initialize advertising restart work */
+    k_work_init_delayable(&adv_restart_work, adv_restart_work_handler);
 
     LOG_INF("Initializing BLE...");
 
