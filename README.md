@@ -11,22 +11,6 @@
 
 В этой папке выполняем следующие команды:
 
-#### С помощью uv
-
-#### Linux/Mac
-
-```sh
-uv venv
-. .venv/bin/activate
-```
-
-#### Windows
-
-```sh
-uv venv
-. .venv/Scripts/activate
-```
-
 ### С помощью pip
 
 #### Linux/Mac
@@ -40,19 +24,11 @@ python -m venv .venv
 
 ```sh
 python -m venv .venv
-. .venv/Scripts/activate
+.venv\Scripts\activate.bat
 ```
 
 ## Скачивание дистрибутива и модулей Zephyr
 
-### С помощью uv
-
-```sh
-uv pip install west
-west update
-uv pip install -r deps/zephyr/zephyr/scripts/requirements.txt
-west update
-```
 
 ### С помощью pip
 
