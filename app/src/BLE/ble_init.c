@@ -9,6 +9,7 @@
 #include "BLE/ble_advertising.h"
 #include "BLE/ble_log.h"
 #include "BLE/GATT/hrs.h"
+#include "BLE/GATT/spo2.h"
 
 LOG_MODULE_REGISTER(ble_init, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -40,8 +41,9 @@ static void connected(struct bt_conn *conn, uint8_t err)
         ble_advertising_stop();
         ble_log_info("Advertising stopped (connected)");
 
-        /* Set connection for HRS service */
+        /* Set connection for HRS and SpO2 services */
         hrs_set_connection(conn);
+        spo2_set_connection(conn);
 
 #if defined(CONFIG_BT_SMP)
         if (bt_conn_get_security(conn) < BT_SECURITY_L2) {
@@ -58,8 +60,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
     ble_log_disconnected(conn, reason);
 
-    /* Clear connection for HRS service */
+    /* Clear connection for HRS and SpO2 services */
     hrs_set_connection(NULL);
+    spo2_set_connection(NULL);
 
     /* Restart advertising when disconnected with delay to allow stack to free
      * resources */
@@ -105,6 +108,8 @@ int ble_init(void)
     ble_log_info("Bluetooth initialized");
     hrs_init(0x01);
     ble_log_info("HRS initialized");
+    spo2_init();
+    ble_log_info("SpO2 initialized");
     ble_advertising_start();
     return 0;
 }
