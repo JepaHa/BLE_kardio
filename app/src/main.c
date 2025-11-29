@@ -3,12 +3,17 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
+#include "BLE/ble_init.h"
+
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
 int main(void)
 {
+
+    ble_init();
+
     int ret = 0;
     bool led_state = true;
     if (!gpio_is_ready_dt(&led)) {
