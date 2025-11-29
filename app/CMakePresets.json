@@ -35,6 +35,15 @@
                 "EXTRA_CONF_FILE": "${sourceDir}/debug.conf",
                 "BOARD_FLASH_RUNNER": "nrfjprog"
             }
+        },
+        {
+            "name": "esp32_devkitc",
+            "inherits": "release",
+            "displayName": "ESP32-DevKitC (WROOM)",
+            "description": "Build for ESP32-DevKitC with ESP32-WROOM module",
+            "cacheVariables": {
+                "BOARD": "esp32_devkitc/esp32/procpu"
+            }
         }
     ],
     "buildPresets": [
@@ -91,6 +100,17 @@
             "displayName": "",
             "inherits": [
                 "nrf52840dk"
+            ]
+        },
+        {
+            "name": "esp32_devkitc",
+            "configurePreset": "esp32_devkitc"
+        },
+        {
+            "name": "flash-esp32_devkitc",
+            "configurePreset": "esp32_devkitc",
+            "targets": [
+                "flash"
             ]
         }
     ],
@@ -170,6 +190,32 @@
                 {
                     "type": "build",
                     "name": "flash-nrf52840dk"
+                }
+            ]
+        },
+        {
+            "name": "esp32_devkitc",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "esp32_devkitc"
+                },
+                {
+                    "type": "build",
+                    "name": "esp32_devkitc"
+                }
+            ]
+        },
+        {
+            "name": "flash-esp32_devkitc",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "esp32_devkitc"
+                },
+                {
+                    "type": "build",
+                    "name": "flash-esp32_devkitc"
                 }
             ]
         }
