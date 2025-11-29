@@ -1,0 +1,50 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "West: build",
+            "type": "shell",
+            "command": "west",
+            "args": [
+                "build",
+                "-b",
+                "nrf52840dk/nrf52840",
+                "app",
+                "--build-dir",
+                "build-west"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "West: flash",
+            "type": "shell",
+            "command": "west",
+            "args": [
+                "flash",
+                "-r",
+                "nrfjprog",
+                "--build-dir",
+                "build-west"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "West: build & flash",
+            "dependsOn": [
+                "West: build",
+                "West: flash"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

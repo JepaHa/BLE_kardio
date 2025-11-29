@@ -1,119 +1,177 @@
 {
-  "version": 6,
-  "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 27,
-    "patch": 0
-  },
-  "configurePresets": [
-    {
-      "name": "release",
-      "displayName": "Release",
-      "description": "Release build using Ninja generator",
-      "generator": "Ninja",
-      "binaryDir": "${sourceParentDir}/build",
-      "installDir": "${sourceParentDir}"
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 27,
+        "patch": 0
     },
-    {
-      "name": "debug",
-      "inherits": "release",
-      "displayName": "Debug",
-      "description": "Debug build using Ninja generator",
-      "cacheVariables": {
-        "EXTRA_CONF_FILE": "${sourceDir}/debug.conf"
-      }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "debug",
-      "configurePreset": "debug"
-    },
-    {
-      "name": "release",
-      "configurePreset": "release"
-    },
-    {
-      "name": "install-debug",
-      "inherits": "debug",
-      "targets": [
-        "install"
-      ]
-    },
-    {
-      "name": "install",
-      "inherits": "release",
-      "targets": [
-        "install"
-      ]
-    },
-    {
-      "name": "flash-debug",
-      "inherits": "debug",
-      "targets": [
-        "flash"
-      ]
-    },
-    {
-      "name": "flash",
-      "inherits": "release",
-      "targets": [
-        "flash"
-      ]
-    }
-  ],
-  "workflowPresets": [
-    {
-      "name": "debug",
-      "steps": [
+    "configurePresets": [
         {
-          "type": "configure",
-          "name": "debug"
+            "name": "release",
+            "displayName": "Release",
+            "description": "Release build using Ninja generator",
+            "generator": "Ninja",
+            "binaryDir": "${sourceParentDir}/build",
+            "installDir": "${sourceParentDir}"
         },
         {
-          "type": "build",
-          "name": "debug"
-        }
-      ]
-    },
-    {
-      "name": "release",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "release"
+            "name": "debug",
+            "inherits": "release",
+            "displayName": "Debug",
+            "description": "Debug build using Ninja generator",
+            "cacheVariables": {
+                "BOARD": "nrf52840dk/nrf52840",
+                "EXTRA_CONF_FILE": "${sourceDir}/debug.conf",
+                "BOARD_FLASH_RUNNER": "nrfjprog"
+            }
         },
         {
-          "type": "build",
-          "name": "release"
+            "name": "nrf52840dk",
+            "inherits": "debug",
+            "displayName": "nRF52840 DK",
+            "description": "Debug build for nRF52840 DK using nrfjprog runner",
+            "cacheVariables": {
+                "BOARD": "nrf52840dk/nrf52840",
+                "EXTRA_CONF_FILE": "${sourceDir}/debug.conf",
+                "BOARD_FLASH_RUNNER": "nrfjprog"
+            }
         }
-      ]
-    },
-    {
-      "name": "flash-debug",
-      "steps": [
+    ],
+    "buildPresets": [
         {
-          "type": "configure",
-          "name": "debug"
+            "name": "debug",
+            "configurePreset": "debug"
         },
         {
-          "type": "build",
-          "name": "flash-debug"
-        }
-      ]
-    },
-    {
-      "name": "flash",
-      "steps": [
-        {
-          "type": "configure",
-          "name": "release"
+            "name": "release",
+            "configurePreset": "release"
         },
         {
-          "type": "build",
-          "name": "flash"
+            "name": "install-debug",
+            "inherits": "debug",
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "install",
+            "inherits": "release",
+            "targets": [
+                "install"
+            ]
+        },
+        {
+            "name": "flash-debug",
+            "inherits": "debug",
+            "targets": [
+                "flash"
+            ]
+        },
+        {
+            "name": "flash",
+            "inherits": "release",
+            "targets": [
+                "flash"
+            ]
+        },
+        {
+            "name": "nrf52840dk",
+            "configurePreset": "nrf52840dk"
+        },
+        {
+            "name": "flash-nrf52840dk",
+            "configurePreset": "nrf52840dk",
+            "targets": [
+                "flash"
+            ]
+        },
+        {
+            "name": "nrf8240dk",
+            "description": "",
+            "displayName": "",
+            "inherits": [
+                "nrf52840dk"
+            ]
         }
-      ]
-    }
-  ]
+    ],
+    "workflowPresets": [
+        {
+            "name": "debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "debug"
+                },
+                {
+                    "type": "build",
+                    "name": "debug"
+                }
+            ]
+        },
+        {
+            "name": "release",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "release"
+                }
+            ]
+        },
+        {
+            "name": "flash-debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "debug"
+                },
+                {
+                    "type": "build",
+                    "name": "flash-debug"
+                }
+            ]
+        },
+        {
+            "name": "flash",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "release"
+                },
+                {
+                    "type": "build",
+                    "name": "flash"
+                }
+            ]
+        },
+        {
+            "name": "nrf52840dk",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "nrf52840dk"
+                },
+                {
+                    "type": "build",
+                    "name": "nrf52840dk"
+                }
+            ]
+        },
+        {
+            "name": "flash-nrf52840dk",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "nrf52840dk"
+                },
+                {
+                    "type": "build",
+                    "name": "flash-nrf52840dk"
+                }
+            ]
+        }
+    ]
 }
