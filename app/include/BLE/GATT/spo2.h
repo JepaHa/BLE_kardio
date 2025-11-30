@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-void spo2_send(uint8_t spo2_value);
+void spo2_send(uint8_t spo2_value, uint16_t pulse_rate);
 void spo2_set_connection(struct bt_conn *conn);
 int spo2_service_register(void);
 int spo2_service_unregister(void);

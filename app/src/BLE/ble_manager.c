@@ -22,12 +22,52 @@
 
 LOG_MODULE_REGISTER(ble_manager, CONFIG_LOG_DEFAULT_LEVEL);
 
-#define DEFAULT_CONNECTION_TIMEOUT_MS   1000 /* 10 seconds */
-#define DEFAULT_NOTIFICATION_TIMEOUT_MS 5000 /* 5 seconds */
+#define DEFAULT_CONNECTION_TIMEOUT_MS   10000 /* 10 seconds */
+#define DEFAULT_NOTIFICATION_TIMEOUT_MS 5000  /* 5 seconds */
+#define FIRST_CONNECTION_TIMEOUT_MS                                            \
+    60000 /* 60 seconds for first connection                                   \
+           */
+#define FIRST_CONNECTION_CHECK_INTERVAL_MS 1000 /* Check every second */
+
+static bool first_connection_attempted = false;
 
 int ble_manager_init(void)
 {
     LOG_INF("BLE Manager initialized");
+    first_connection_attempted = false;
+    return 0;
+}
+
+int ble_manager_wait_for_first_connection(void)
+{
+    int err;
+
+    LOG_INF("Waiting for first connection (timeout: %u seconds)...",
+            FIRST_CONNECTION_TIMEOUT_MS / 1000);
+
+    /* Enable Bluetooth stack */
+    err = ble_enable_stack();
+    if (err) {
+        LOG_ERR("Failed to enable Bluetooth stack (err %d)", err);
+        return err;
+    }
+
+    /* Wait for connection with extended timeout */
+    err = ble_manager_enable_and_wait(FIRST_CONNECTION_TIMEOUT_MS,
+                                      DEFAULT_NOTIFICATION_TIMEOUT_MS);
+    if (err) {
+        /* Connection timeout - disable Bluetooth and enter power saving mode */
+        LOG_WRN("No connection established after %u seconds, entering power "
+                "saving mode",
+                FIRST_CONNECTION_TIMEOUT_MS / 1000);
+        ble_manager_disable_if_idle();
+        first_connection_attempted = true; /* Mark as attempted */
+        return 0;                          /* Not an error, just timeout */
+    }
+
+    /* Connection established */
+    LOG_INF("First connection established successfully");
+    first_connection_attempted = true;
     return 0;
 }
 
@@ -120,6 +160,7 @@ int ble_manager_on_disconnected(void)
 int ble_manager_send_data(enum ble_data_type data_type, uint8_t value)
 {
     int err;
+    uint32_t connection_timeout;
 
     /* Enable Bluetooth if not already enabled */
     if (!ble_is_enabled()) {
@@ -132,11 +173,24 @@ int ble_manager_send_data(enum ble_data_type data_type, uint8_t value)
 
     /* Wait for connection if not already connected */
     if (!ble_has_active_connections()) {
-        err = ble_manager_enable_and_wait(DEFAULT_CONNECTION_TIMEOUT_MS,
+        /* Use longer timeout for first connection attempt */
+        if (!first_connection_attempted) {
+            connection_timeout = FIRST_CONNECTION_TIMEOUT_MS;
+            LOG_INF("First connection attempt - waiting up to %u seconds",
+                    connection_timeout / 1000);
+            first_connection_attempted = true;
+        } else {
+            connection_timeout = DEFAULT_CONNECTION_TIMEOUT_MS;
+        }
+
+        err = ble_manager_enable_and_wait(connection_timeout,
                                           DEFAULT_NOTIFICATION_TIMEOUT_MS);
         if (err) {
-            /* Connection timeout - disable Bluetooth and wait for next call */
-            LOG_WRN("No connection available, disabling Bluetooth");
+            /* Connection timeout - disable Bluetooth and enter power saving
+             * mode */
+            LOG_WRN("No connection available after %u ms, entering power "
+                    "saving mode",
+                    connection_timeout);
             ble_manager_disable_if_idle();
             return 0; /* Return success, but data wasn't sent */
         }
@@ -152,8 +206,15 @@ int ble_manager_send_data(enum ble_data_type data_type, uint8_t value)
     /* Send data based on type */
     switch (data_type) {
     case BLE_DATA_TYPE_SPO2:
+        /* For SpO2, value is spo2_value, pulse_rate is passed as second
+         * parameter */
+        /* This is a limitation of the current API - we'll use a default
+         * pulse_rate */
         LOG_INF("Sending SpO2: %d%%", value);
-        spo2_send(value);
+        /* Note: This will be updated by ble_manager_send_spo2 which passes
+         * pulse_rate */
+        spo2_send(value, 0); /* Default pulse_rate, will be overridden by
+                                ble_manager_send_spo2 */
         break;
 
     case BLE_DATA_TYPE_HRS:
@@ -173,9 +234,60 @@ int ble_manager_send_data(enum ble_data_type data_type, uint8_t value)
     return 0;
 }
 
-int ble_manager_send_spo2(uint8_t spo2_value)
+int ble_manager_send_spo2(uint8_t spo2_value, uint16_t pulse_rate)
 {
-    return ble_manager_send_data(BLE_DATA_TYPE_SPO2, spo2_value);
+    int err;
+    uint32_t connection_timeout;
+
+    /* Enable Bluetooth if not already enabled */
+    if (!ble_is_enabled()) {
+        err = ble_enable_stack();
+        if (err) {
+            LOG_ERR("Failed to enable Bluetooth stack (err %d)", err);
+            return err;
+        }
+    }
+
+    /* Wait for connection if not already connected */
+    if (!ble_has_active_connections()) {
+        /* Use longer timeout for first connection attempt */
+        if (!first_connection_attempted) {
+            connection_timeout = FIRST_CONNECTION_TIMEOUT_MS;
+            LOG_INF("First connection attempt - waiting up to %u seconds",
+                    connection_timeout / 1000);
+            first_connection_attempted = true;
+        } else {
+            connection_timeout = DEFAULT_CONNECTION_TIMEOUT_MS;
+        }
+
+        err = ble_manager_enable_and_wait(connection_timeout,
+                                          DEFAULT_NOTIFICATION_TIMEOUT_MS);
+        if (err) {
+            /* Connection timeout - disable Bluetooth and enter power saving
+             * mode */
+            LOG_WRN("No connection available after %u ms, entering power "
+                    "saving mode",
+                    connection_timeout);
+            ble_manager_disable_if_idle();
+            return 0; /* Return success, but data wasn't sent */
+        }
+    }
+
+    /* Check again if we have connection before sending */
+    if (!ble_has_active_connections()) {
+        LOG_WRN("No active connection, disabling Bluetooth");
+        ble_manager_disable_if_idle();
+        return 0; /* Return success, but data wasn't sent */
+    }
+
+    /* Send SpO2 data with pulse rate */
+    LOG_INF("Sending SpO2: %d%%, PR: %d bpm", spo2_value, pulse_rate);
+    spo2_send(spo2_value, pulse_rate);
+
+    /* Optionally disable Bluetooth if no active connections */
+    ble_manager_disable_if_idle();
+
+    return 0;
 }
 
 bool ble_manager_is_enabled(void)

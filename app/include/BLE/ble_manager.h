@@ -23,6 +23,17 @@ enum ble_data_type {
 int ble_manager_init(void);
 
 /**
+ * @brief Wait for first connection with extended timeout
+ *
+ * This function enables Bluetooth and waits for the first connection
+ * with an extended timeout (60 seconds). If no connection is established,
+ * Bluetooth is disabled and the device enters power saving mode.
+ *
+ * @return 0 on success (connected or timeout), negative error code on failure
+ */
+int ble_manager_wait_for_first_connection(void);
+
+/**
  * @brief Send data via Bluetooth
  *
  * This is a high-level universal function that:
@@ -42,10 +53,11 @@ int ble_manager_send_data(enum ble_data_type data_type, uint8_t value);
  * @brief Send SpO2 data via Bluetooth (convenience wrapper)
  *
  * @param spo2_value SpO2 value in percent (0-100)
+ * @param pulse_rate Heart rate in beats per minute (bpm)
  *
  * @return 0 on success, negative error code on failure
  */
-int ble_manager_send_spo2(uint8_t spo2_value);
+int ble_manager_send_spo2(uint8_t spo2_value, uint16_t pulse_rate);
 
 /**
  * @brief Enable Bluetooth and wait for connection

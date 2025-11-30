@@ -43,6 +43,19 @@ LOG_MODULE_REGISTER(spo2, CONFIG_LOG_DEFAULT_LEVEL);
  * SFLOAT: 16-bit, mantissa (12 bits, signed) + exponent (4 bits, signed)
  * Format: value = mantissa * 10^exponent
  * For SpO2 (0-100%), we use exponent = 0
+ *
+ * IEEE 11073-10404 SFLOAT format:
+ * - Bits 0-11: Mantissa (signed, -2048 to 2047) in two's complement
+ * - Bits 12-15: Exponent (signed, -8 to 7) in two's complement
+ * - Special values:
+ *   0x07FF = NRes (Not at this Resolution)
+ *   0x0800 = NaN (Not a Number)
+ *   0x0801 = +INF (Positive Infinity)
+ *   0x07FE = -INF (Negative Infinity)
+ *
+ * Important: Mantissa is signed 12-bit value in two's complement format.
+ * For positive values (0-2047), bits 0-11 contain the value directly.
+ * For negative values, use two's complement representation.
  */
 static uint16_t float_to_sfloat(float value)
 {
@@ -54,7 +67,7 @@ static uint16_t float_to_sfloat(float value)
         return 0x07FF; /* NRes (Not at this Resolution) */
     }
 
-    /* For values 0-100 (SpO2) and 0-300 (PR), use exponent 0 */
+    /* For SpO2 values 0-100%, use exponent 0 */
     /* Values fit in mantissa range (-2048 to 2047) with exponent 0 */
     mantissa = (int16_t)value;
 
@@ -66,26 +79,48 @@ static uint16_t float_to_sfloat(float value)
     }
 
     /* SFLOAT format: mantissa (12 bits, signed) + exponent (4 bits, signed) */
-    /* Mantissa in bits 0-11, exponent in bits 12-15 */
-    return (uint16_t)((mantissa & 0x0FFF) | ((exponent & 0x0F) << 12));
+    /* Mantissa in bits 0-11 (signed two's complement), exponent in bits 12-15
+     */
+    /* For positive values, just mask to 12 bits */
+    /* For negative values, two's complement is already correct when masked */
+    uint16_t mantissa_u16 = (uint16_t)(mantissa & 0x0FFF);
+
+    /* Exponent: signed 4-bit value in two's complement */
+    /* For exponent 0, we use 0x0 (not 0x8) */
+    uint16_t exponent_u16 = (uint16_t)((exponent & 0x0F) << 12);
+
+    return mantissa_u16 | exponent_u16;
 }
 
 static bool notifications_enabled = false;
+static bool indications_enabled = false;
 static struct bt_conn *current_conn;
 
 static void spo2_ccc_cfg_changed(const struct bt_gatt_attr *attr,
                                  uint16_t value)
 {
     ARG_UNUSED(attr);
-    notifications_enabled = (value == BT_GATT_CCC_NOTIFY);
-    ble_log_info("SpO2 notifications %s",
-                 notifications_enabled ? "enabled" : "disabled");
+    notifications_enabled = (value & BT_GATT_CCC_NOTIFY) != 0;
+    indications_enabled = (value & BT_GATT_CCC_INDICATE) != 0;
+
+    if (notifications_enabled && indications_enabled) {
+        ble_log_info("SpO2 notifications and indications enabled");
+    } else if (notifications_enabled) {
+        ble_log_info("SpO2 notifications enabled");
+    } else if (indications_enabled) {
+        ble_log_info("SpO2 indications enabled");
+    } else {
+        ble_log_info("SpO2 notifications and indications disabled");
+    }
 }
 
 /* Oxygen Saturation Service Declaration */
+/* According to Bluetooth SIG spec, SpO2 Measurement supports both NOTIFY and
+ * INDICATE */
 static struct bt_gatt_attr spo2_attrs[] = {
     BT_GATT_PRIMARY_SERVICE(BT_UUID_OSS),
-    BT_GATT_CHARACTERISTIC(BT_UUID_SPO2_MEASUREMENT, BT_GATT_CHRC_NOTIFY,
+    BT_GATT_CHARACTERISTIC(BT_UUID_SPO2_MEASUREMENT,
+                           BT_GATT_CHRC_NOTIFY | BT_GATT_CHRC_INDICATE,
                            BT_GATT_PERM_NONE, NULL, NULL, NULL),
     BT_GATT_CCC(spo2_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
 };
@@ -95,50 +130,135 @@ static struct bt_gatt_service spo2_svc = {
     .attr_count = 0,
 };
 
-void spo2_send(uint8_t spo2_value)
+void spo2_send(uint8_t spo2_value, uint16_t pulse_rate)
 {
-    /* PLX Continuous Measurement format according to spec:
-     * Byte 0: Flags (1 octet)
-     * Byte 1-2: SpO2PR-Normal SpO2 (SFLOAT, 2 octets, LSO..MSO)
-     * Byte 3-4: Measurement Status (16-bit, 2 octets, LSO..MSO) - optional but
-     * included
+    /* PLX Continuous Measurement format according to Bluetooth SIG PLX Service
+     * spec: According to PLX Service spec (0x1822), PLX Continuous Measurement
+     * format: Byte 0: Flags (1 octet)
+     *   - Bit 0: SpO2PR-Normal present (SpO2 and Pulse Rate both present)
+     *   - Bit 1: Measurement Status present
+     *   - Bit 2: Device and Sensor Status present
+     *   - Bit 3: Pulse Amplitude Index present
+     *   - Bit 4: Device Clock present
+     * Byte 1-2: SpO2 (SFLOAT, 2 octets, little-endian) - if bit 0 set
+     * Byte 3-4: Pulse Rate (SFLOAT, 2 octets, little-endian) - if bit 0 set
+     * Byte 5-6: Measurement Status (16-bit, 2 octets, little-endian) - if bit 1
+     * set
+     *
+     * Note: According to spec, if bit 0 is set, BOTH SpO2 and PR must be
+     * present. For our implementation, we send:
+     * - Flags: 0x03 (SpO2PR-Normal present, Measurement Status present)
+     * - SpO2 SFLOAT (2 bytes) - value in percent
+     * - Pulse Rate SFLOAT (2 bytes) - heart rate in bpm
+     * - Measurement Status (2 bytes)
+     * Total: 7 bytes
      */
-    static uint8_t spo2_data[5];
+    static uint8_t spo2_data[7];
     struct bt_conn *conn = current_conn;
     uint16_t spo2_sfloat;
-    uint16_t measurement_status = 0x0001; /* Valid measurement */
+    uint16_t pr_sfloat;
+    uint16_t measurement_status =
+        0x0001; /* Bit 0: Valid SpO2-PR Normal measurement */
 
-    /* Check if notifications are enabled */
-    if (!notifications_enabled) {
+    /* Check if notifications or indications are enabled */
+    if (!notifications_enabled && !indications_enabled) {
         return;
+    }
+
+    /* Validate SpO2 value range (0-100%) */
+    if (spo2_value > 100) {
+        ble_log_error("Invalid SpO2 value: %d%%, clamping to 100%%",
+                      spo2_value);
+        spo2_value = 100;
+    }
+
+    /* Validate Pulse Rate range (0-300 bpm typical, but allow up to 255 for
+     * uint8_t compatibility) */
+    if (pulse_rate > 300) {
+        ble_log_error("Invalid pulse rate: %d bpm, clamping to 300 bpm",
+                      pulse_rate);
+        pulse_rate = 300;
     }
 
     /* Convert to SFLOAT format */
     spo2_sfloat = float_to_sfloat((float)spo2_value);
+    pr_sfloat = float_to_sfloat((float)pulse_rate);
 
     /* Format PLX Continuous Measurement:
-     * Flags: bit 0 = SpO2PR-Normal present, bit 1 = Measurement Status present
+     * Flags byte:
+     *   Bit 0 = 1: SpO2PR-Normal present (SpO2 AND Pulse Rate both present)
+     *   Bit 1 = 1: Measurement Status present
+     *   Bits 2-7 = 0: Other fields not present
      */
     spo2_data[0] =
-        0x03; /* Flags: SpO2PR-Normal and Measurement Status present */
+        0x03; /* 0b00000011: SpO2PR-Normal and Measurement Status present */
 
-    /* SpO2 (SFLOAT, LSO..MSO) */
+    /* SpO2 value in SFLOAT format (little-endian: LSO, MSO) */
     sys_put_le16(spo2_sfloat, &spo2_data[1]);
 
-    /* Measurement Status (16-bit, LSO..MSO)
-     * Bit 0: Valid SpO2 (1 = valid, 0 = invalid)
-     * Other bits: various status flags
+    /* Pulse Rate in SFLOAT format (little-endian: LSO, MSO)
+     * Heart rate in beats per minute (bpm)
      */
-    sys_put_le16(measurement_status, &spo2_data[3]);
+    sys_put_le16(pr_sfloat, &spo2_data[3]);
 
-    /* Send notification to all connected devices */
+    /* Measurement Status (16-bit, little-endian: LSO, MSO)
+     * According to PLX spec, Measurement Status format:
+     * Bit 0: Valid SpO2-PR Normal (1 = valid, 0 = invalid)
+     * Bit 1: Valid SpO2-PR Fast (1 = valid, 0 = invalid)
+     * Bit 2: Valid SpO2-PR Slow (1 = valid, 0 = invalid)
+     * Bits 3-15: Reserved for future use
+     *
+     * Since we only send SpO2PR-Normal, we set bit 0 = 1
+     */
+    sys_put_le16(measurement_status, &spo2_data[5]);
+
+    /* Debug: Log data format for verification (show raw bytes) */
+    ble_log_info("SpO2 data: Flags=0x%02X, SpO2=0x%04X (%d%%), PR=0x%04X "
+                 "(%d bpm), Status=0x%04X",
+                 spo2_data[0], spo2_sfloat, spo2_value, pr_sfloat, pulse_rate,
+                 measurement_status);
+    ble_log_info(
+        "SpO2 raw bytes: [0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X]",
+        spo2_data[0], spo2_data[1], spo2_data[2], spo2_data[3], spo2_data[4],
+        spo2_data[5], spo2_data[6]);
+
+    /* Send data using indicate (preferred) or notify */
     if (conn != NULL) {
-        bt_gatt_notify(conn, &spo2_svc.attrs[1], &spo2_data, sizeof(spo2_data));
-        ble_log_info("SpO2: %d%% sent", spo2_value);
+        if (indications_enabled) {
+            /* Use indicate for guaranteed delivery (requires confirmation) */
+            /* In Zephyr, bt_gatt_indicate uses bt_gatt_indicate_params
+             * structure */
+            struct bt_gatt_indicate_params indicate_params = {
+                .attr = &spo2_svc.attrs[1],
+                .data = spo2_data,
+                .len = sizeof(spo2_data),
+            };
+            bt_gatt_indicate(conn, &indicate_params);
+            ble_log_info("SpO2: %d%%, PR: %d bpm sent via indicate", spo2_value,
+                         pulse_rate);
+        } else if (notifications_enabled) {
+            /* Fallback to notify if indicate not enabled */
+            bt_gatt_notify(conn, &spo2_svc.attrs[1], spo2_data,
+                           sizeof(spo2_data));
+            ble_log_info("SpO2: %d%%, PR: %d bpm sent via notify", spo2_value,
+                         pulse_rate);
+        }
     } else {
-        /* If no specific connection, notify all */
-        bt_gatt_notify(NULL, &spo2_svc.attrs[1], &spo2_data, sizeof(spo2_data));
-        ble_log_info("SpO2: %d%% sent (broadcast)", spo2_value);
+        /* If no specific connection, try to send to all */
+        if (indications_enabled) {
+            /* Indicate requires connection, fallback to notify for broadcast */
+            bt_gatt_notify(NULL, &spo2_svc.attrs[1], spo2_data,
+                           sizeof(spo2_data));
+            ble_log_info(
+                "SpO2: %d%%, PR: %d bpm sent via notify (broadcast, indicate "
+                "requires connection)",
+                spo2_value, pulse_rate);
+        } else if (notifications_enabled) {
+            bt_gatt_notify(NULL, &spo2_svc.attrs[1], spo2_data,
+                           sizeof(spo2_data));
+            ble_log_info("SpO2: %d%%, PR: %d bpm sent via notify (broadcast)",
+                         spo2_value, pulse_rate);
+        }
     }
 }
 

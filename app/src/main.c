@@ -15,6 +15,10 @@ int main(void)
     /* Initialize BLE Manager (high-level Bluetooth service) */
     ble_manager_init();
 
+    /* Wait for first connection with extended timeout */
+    /* If no connection, device will enter power saving mode */
+    ble_manager_wait_for_first_connection();
+
     /* Initialize SpO2 simulator */
     spo2_simulator_init();
 

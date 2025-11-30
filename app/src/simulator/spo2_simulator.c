@@ -19,9 +19,10 @@ LOG_MODULE_REGISTER(spo2_simulator, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define SPO2_SIMULATOR_STACK_SIZE  1024
 #define SPO2_SIMULATOR_PRIORITY    5
-#define SPO2_SIMULATOR_INTERVAL_MS 60000 /* 60 seconds */
+#define SPO2_SIMULATOR_INTERVAL_MS 10000 /* 10 seconds */
 
-static uint8_t spo2_value = 98U; /* SpO2 value in percent (95-100 typical) */
+static uint8_t spo2_value = 98U;  /* SpO2 value in percent (95-100 typical) */
+static uint16_t pulse_rate = 72U; /* Heart rate in bpm (60-100 typical) */
 
 static void spo2_simulator_thread(void *p1, void *p2, void *p3)
 {
@@ -41,14 +42,20 @@ static void spo2_simulator_thread(void *p1, void *p2, void *p3)
             spo2_value = 95U;
         }
 
-        /* Use high-level BLE Manager to send SpO2 data */
+        /* Simulate realistic heart rate variation (60-100 bpm) */
+        pulse_rate += 2;
+        if (pulse_rate > 100U) {
+            pulse_rate = 60U;
+        }
+
+        /* Use high-level BLE Manager to send SpO2 data with pulse rate */
         /* This function handles all Bluetooth management automatically */
-        int err = ble_manager_send_spo2(spo2_value);
+        int err = ble_manager_send_spo2(spo2_value, pulse_rate);
         if (err) {
             LOG_ERR("Failed to send SpO2 data (err %d)", err);
         }
 
-        /* Wait 60 seconds before next measurement */
+        /* Wait 10 seconds before next measurement */
         k_msleep(SPO2_SIMULATOR_INTERVAL_MS);
     }
 }
