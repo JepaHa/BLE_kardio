@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/logging/log.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -31,7 +32,11 @@ static uint8_t simulate_hrm;
 static uint8_t heartrate = 90U;
 static uint8_t hrs_blsc;
 static struct k_timer hrs_timer;
+static bool hrs_timer_initialized = false;
 static struct bt_conn *current_conn;
+
+/* Forward declaration */
+void hrs_notify(void);
 
 static void hrs_timer_handler(struct k_timer *timer)
 {
@@ -68,22 +73,21 @@ static ssize_t read_blsc(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 }
 
 /* Heart Rate Service Declaration */
-BT_GATT_SERVICE_DEFINE(
-    hrs_svc, BT_GATT_PRIMARY_SERVICE(BT_UUID_HRS),
+static struct bt_gatt_attr hrs_attrs[] = {
+    BT_GATT_PRIMARY_SERVICE(BT_UUID_HRS),
     BT_GATT_CHARACTERISTIC(BT_UUID_HRS_MEASUREMENT, BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_NONE, NULL, NULL, NULL),
     BT_GATT_CCC(hrmc_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
     BT_GATT_CHARACTERISTIC(BT_UUID_HRS_BODY_SENSOR, BT_GATT_CHRC_READ,
                            BT_GATT_PERM_READ, read_blsc, NULL, NULL),
     BT_GATT_CHARACTERISTIC(BT_UUID_HRS_CONTROL_POINT, BT_GATT_CHRC_WRITE,
-                           BT_GATT_PERM_NONE, NULL, NULL, NULL), );
+                           BT_GATT_PERM_NONE, NULL, NULL, NULL),
+};
 
-void hrs_init(uint8_t blsc)
-{
-    hrs_blsc = blsc;
-    k_timer_init(&hrs_timer, hrs_timer_handler, NULL);
-    ble_log_info("HRS initialized with body sensor location: 0x%02x", blsc);
-}
+static struct bt_gatt_service hrs_svc = {
+    .attrs = NULL,
+    .attr_count = 0,
+};
 
 void hrs_notify(void)
 {
@@ -123,4 +127,52 @@ void hrs_notify(void)
 void hrs_set_connection(struct bt_conn *conn)
 {
     current_conn = conn;
+}
+
+int hrs_service_register(uint8_t blsc)
+{
+    int err;
+
+    /* Set body sensor location */
+    hrs_blsc = blsc;
+
+    /* Initialize timer if not already done */
+    if (!hrs_timer_initialized) {
+        k_timer_init(&hrs_timer, hrs_timer_handler, NULL);
+        hrs_timer_initialized = true;
+    }
+
+    /* Initialize service structure */
+    hrs_svc.attrs = hrs_attrs;
+    hrs_svc.attr_count = ARRAY_SIZE(hrs_attrs);
+
+    /* Register HRS service */
+    err = bt_gatt_service_register(&hrs_svc);
+    if (err) {
+        ble_log_error("HRS service registration failed (err %d)", err);
+        return err;
+    }
+
+    ble_log_info("HRS service registered with body sensor location: 0x%02x",
+                 blsc);
+    return 0;
+}
+
+int hrs_service_unregister(void)
+{
+    int err;
+
+    err = bt_gatt_service_unregister(&hrs_svc);
+    if (err) {
+        ble_log_error("HRS service unregistration failed (err %d)", err);
+        return err;
+    }
+
+    ble_log_info("HRS service unregistered");
+    return 0;
+}
+
+struct bt_gatt_service *hrs_get_service(void)
+{
+    return &hrs_svc;
 }

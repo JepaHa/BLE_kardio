@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/logging/log.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
@@ -41,7 +42,7 @@ LOG_MODULE_REGISTER(spo2, CONFIG_LOG_DEFAULT_LEVEL);
 /* Helper function to convert value to IEEE 11073 SFLOAT format
  * SFLOAT: 16-bit, mantissa (12 bits, signed) + exponent (4 bits, signed)
  * Format: value = mantissa * 10^exponent
- * For SpO2 (0-100%) and PR (0-300 bpm), we use exponent = 0
+ * For SpO2 (0-100%), we use exponent = 0
  */
 static uint16_t float_to_sfloat(float value)
 {
@@ -69,90 +70,51 @@ static uint16_t float_to_sfloat(float value)
     return (uint16_t)((mantissa & 0x0FFF) | ((exponent & 0x0F) << 12));
 }
 
-static uint8_t simulate_spo2;
-static uint8_t spo2_value = 98U;  /* SpO2 value in percent (95-100 typical) */
-static uint16_t pulse_rate = 90U; /* Pulse rate in bpm */
-static uint8_t valid_spo2 = 1U;   /* Valid SpO2 flag (1 = valid, 0 = invalid) */
-static uint16_t measurement_status = 0U; /* Measurement Status (16-bit) */
-static struct k_timer spo2_timer;
+static bool notifications_enabled = false;
 static struct bt_conn *current_conn;
-
-static void spo2_timer_handler(struct k_timer *timer)
-{
-    ARG_UNUSED(timer);
-    spo2_notify();
-}
 
 static void spo2_ccc_cfg_changed(const struct bt_gatt_attr *attr,
                                  uint16_t value)
 {
     ARG_UNUSED(attr);
-    bool notif_enabled = (value == BT_GATT_CCC_NOTIFY);
-    simulate_spo2 = notif_enabled ? 1 : 0;
+    notifications_enabled = (value == BT_GATT_CCC_NOTIFY);
     ble_log_info("SpO2 notifications %s",
-                 notif_enabled ? "enabled" : "disabled");
-
-    if (notif_enabled) {
-        /* Start timer for periodic SpO2 measurements */
-        /* SpO2 is typically measured every 1 second */
-        k_timer_start(&spo2_timer, K_SECONDS(1), K_SECONDS(1));
-        ble_log_info("SpO2 measurement timer started");
-    } else {
-        /* Stop timer when notifications are disabled */
-        k_timer_stop(&spo2_timer);
-        ble_log_info("SpO2 measurement timer stopped");
-    }
+                 notifications_enabled ? "enabled" : "disabled");
 }
 
 /* Oxygen Saturation Service Declaration */
-BT_GATT_SERVICE_DEFINE(spo2_svc, BT_GATT_PRIMARY_SERVICE(BT_UUID_OSS),
-                       BT_GATT_CHARACTERISTIC(BT_UUID_SPO2_MEASUREMENT,
-                                              BT_GATT_CHRC_NOTIFY,
-                                              BT_GATT_PERM_NONE, NULL, NULL,
-                                              NULL),
-                       BT_GATT_CCC(spo2_ccc_cfg_changed,
-                                   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE), );
+static struct bt_gatt_attr spo2_attrs[] = {
+    BT_GATT_PRIMARY_SERVICE(BT_UUID_OSS),
+    BT_GATT_CHARACTERISTIC(BT_UUID_SPO2_MEASUREMENT, BT_GATT_CHRC_NOTIFY,
+                           BT_GATT_PERM_NONE, NULL, NULL, NULL),
+    BT_GATT_CCC(spo2_ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+};
 
-void spo2_init(void)
-{
-    k_timer_init(&spo2_timer, spo2_timer_handler, NULL);
-    ble_log_info("SpO2 service initialized");
-}
+static struct bt_gatt_service spo2_svc = {
+    .attrs = NULL,
+    .attr_count = 0,
+};
 
-void spo2_notify(void)
+void spo2_send(uint8_t spo2_value)
 {
     /* PLX Continuous Measurement format according to spec:
      * Byte 0: Flags (1 octet)
      * Byte 1-2: SpO2PR-Normal SpO2 (SFLOAT, 2 octets, LSO..MSO)
-     * Byte 3-4: SpO2PR-Normal PR (SFLOAT, 2 octets, LSO..MSO)
-     * Byte 5-6: Measurement Status (16-bit, 2 octets, LSO..MSO) - optional but
+     * Byte 3-4: Measurement Status (16-bit, 2 octets, LSO..MSO) - optional but
      * included
      */
-    static uint8_t spo2_data[7];
+    static uint8_t spo2_data[5];
     struct bt_conn *conn = current_conn;
     uint16_t spo2_sfloat;
-    uint16_t pr_sfloat;
+    uint16_t measurement_status = 0x0001; /* Valid measurement */
 
-    /* SpO2 measurements simulation */
-    if (!simulate_spo2) {
+    /* Check if notifications are enabled */
+    if (!notifications_enabled) {
         return;
-    }
-
-    /* Simulate realistic SpO2 variation (95-100%) */
-    spo2_value++;
-    if (spo2_value > 100U) {
-        spo2_value = 95U;
-    }
-
-    /* Simulate pulse rate (90-100 bpm) */
-    pulse_rate++;
-    if (pulse_rate > 100U) {
-        pulse_rate = 90U;
     }
 
     /* Convert to SFLOAT format */
     spo2_sfloat = float_to_sfloat((float)spo2_value);
-    pr_sfloat = float_to_sfloat((float)pulse_rate);
 
     /* Format PLX Continuous Measurement:
      * Flags: bit 0 = SpO2PR-Normal present, bit 1 = Measurement Status present
@@ -163,30 +125,62 @@ void spo2_notify(void)
     /* SpO2 (SFLOAT, LSO..MSO) */
     sys_put_le16(spo2_sfloat, &spo2_data[1]);
 
-    /* PR - Pulse Rate (SFLOAT, LSO..MSO) */
-    sys_put_le16(pr_sfloat, &spo2_data[3]);
-
     /* Measurement Status (16-bit, LSO..MSO)
      * Bit 0: Valid SpO2 (1 = valid, 0 = invalid)
      * Other bits: various status flags
      */
-    measurement_status = valid_spo2 ? 0x0001 : 0x0000;
-    sys_put_le16(measurement_status, &spo2_data[5]);
+    sys_put_le16(measurement_status, &spo2_data[3]);
 
     /* Send notification to all connected devices */
     if (conn != NULL) {
         bt_gatt_notify(conn, &spo2_svc.attrs[1], &spo2_data, sizeof(spo2_data));
-        ble_log_info("SpO2: %d%% PR: %d bpm (valid=%d) sent", spo2_value,
-                     pulse_rate, valid_spo2);
+        ble_log_info("SpO2: %d%% sent", spo2_value);
     } else {
         /* If no specific connection, notify all */
         bt_gatt_notify(NULL, &spo2_svc.attrs[1], &spo2_data, sizeof(spo2_data));
-        ble_log_info("SpO2: %d%% PR: %d bpm (valid=%d) sent (broadcast)",
-                     spo2_value, pulse_rate, valid_spo2);
+        ble_log_info("SpO2: %d%% sent (broadcast)", spo2_value);
     }
 }
 
 void spo2_set_connection(struct bt_conn *conn)
 {
     current_conn = conn;
+}
+
+int spo2_service_register(void)
+{
+    int err;
+
+    /* Initialize service structure */
+    spo2_svc.attrs = spo2_attrs;
+    spo2_svc.attr_count = ARRAY_SIZE(spo2_attrs);
+
+    /* Register SpO2 service */
+    err = bt_gatt_service_register(&spo2_svc);
+    if (err) {
+        ble_log_error("SpO2 service registration failed (err %d)", err);
+        return err;
+    }
+
+    ble_log_info("SpO2 service registered");
+    return 0;
+}
+
+int spo2_service_unregister(void)
+{
+    int err;
+
+    err = bt_gatt_service_unregister(&spo2_svc);
+    if (err) {
+        ble_log_error("SpO2 service unregistration failed (err %d)", err);
+        return err;
+    }
+
+    ble_log_info("SpO2 service unregistered");
+    return 0;
+}
+
+struct bt_gatt_service *spo2_get_service(void)
+{
+    return &spo2_svc;
 }

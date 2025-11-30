@@ -10,6 +10,7 @@
 #include "BLE/ble_log.h"
 #include "BLE/GATT/hrs.h"
 #include "BLE/GATT/spo2.h"
+#include "BLE/GATT/gatt_services.h"
 
 LOG_MODULE_REGISTER(ble_init, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -99,6 +100,7 @@ int ble_init(void)
 
     LOG_INF("Initializing BLE...");
 
+    /* Enable Bluetooth stack */
     err = bt_enable(NULL);
     if (err) {
         ble_log_error("Bluetooth init failed (err %d)", err);
@@ -106,10 +108,15 @@ int ble_init(void)
     }
 
     ble_log_info("Bluetooth initialized");
-    hrs_init(0x01);
-    ble_log_info("HRS initialized");
-    spo2_init();
-    ble_log_info("SpO2 initialized");
+
+    /* Register all GATT services */
+    err = gatt_services_register_all();
+    if (err) {
+        ble_log_error("Failed to register GATT services (err %d)", err);
+        return err;
+    }
+
+    /* Start advertising */
     ble_advertising_start();
     return 0;
 }

@@ -4,6 +4,7 @@
 #include <zephyr/logging/log.h>
 
 #include "BLE/ble_init.h"
+#include "simulator/spo2_simulator.h"
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -12,8 +13,10 @@ static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 int main(void)
 {
     /* Initialize HRS service with body sensor location: Chest (0x01) */
-
     ble_init();
+
+    /* Initialize SpO2 simulator */
+    spo2_simulator_init();
 
     int ret = 0;
     bool led_state = true;
