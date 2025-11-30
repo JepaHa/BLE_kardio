@@ -9,8 +9,18 @@
 LOG_MODULE_REGISTER(ble_advertising, CONFIG_LOG_DEFAULT_LEVEL);
 
 /* Advertising data */
+static const uint8_t heart_rate_uuid[] = {0x0D,
+                                          0x18}; /* 0x180D in little-endian */
+static const uint8_t pulse_oximeter_appearance[] = {
+    0xC0, 0x03}; /* 0x03C0 in little-endian */
+
 static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    /* Heart Rate Service UUID (0x180D) */
+    BT_DATA(BT_DATA_UUID16_SOME, heart_rate_uuid, sizeof(heart_rate_uuid)),
+    /* Pulse Oximeter Appearance (0x03C0) */
+    BT_DATA(BT_DATA_GAP_APPEARANCE, pulse_oximeter_appearance,
+            sizeof(pulse_oximeter_appearance)),
     BT_DATA(BT_DATA_NAME_COMPLETE, "BLE_Kardio", 10),
 };
 

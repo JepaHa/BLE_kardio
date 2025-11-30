@@ -1,46 +1,26 @@
-#include <string.h>
 #include <zephyr/kernel.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
 #include "BLE/ble_init.h"
+#include "BLE/ble_manager.h"
 #include "simulator/spo2_simulator.h"
 
 LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
-
 int main(void)
 {
-    /* Initialize HRS service with body sensor location: Chest (0x01) */
+    /* Initialize BLE (includes LED initialization) */
     ble_init();
+
+    /* Initialize BLE Manager (high-level Bluetooth service) */
+    ble_manager_init();
 
     /* Initialize SpO2 simulator */
     spo2_simulator_init();
 
-    int ret = 0;
-    bool led_state = true;
-    if (!gpio_is_ready_dt(&led)) {
-        // LOG_ERR("%s is not ready! Exit.", led.port->name);
-        return -1;
-    }
-
-    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-    if (ret < 0) {
-        // LOG_ERR("%s: %s. Exit.", led.port->name, strerror(-ret));
-        return -1;
-    }
-
-    // LOG_INF("Run Blinky sample.");
+    /* Main loop - just sleep, LED is controlled by Bluetooth state */
     while (1) {
-        ret = gpio_pin_toggle_dt(&led);
-        if (ret < 0) {
-            LOG_ERR("%s: %s. Exit.", led.port->name, strerror(-ret));
-            return -1;
-        }
-        led_state = !led_state;
-        // LOG_INF("LED state: %s", led_state ? "ON" : "OFF");
-        k_msleep(500);
+        k_msleep(1000);
     }
     return 0;
 }
