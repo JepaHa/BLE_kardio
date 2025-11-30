@@ -10,9 +10,10 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/zbus/zbus.h>
 #include <stdint.h>
 
-#include "BLE/ble_manager.h"
+#include "zbus/zbus_channels.h"
 #include "simulator/spo2_simulator.h"
 
 LOG_MODULE_REGISTER(spo2_simulator, CONFIG_LOG_DEFAULT_LEVEL);
@@ -48,11 +49,15 @@ static void spo2_simulator_thread(void *p1, void *p2, void *p3)
             pulse_rate = 60U;
         }
 
-        /* Use high-level BLE Manager to send SpO2 data with pulse rate */
-        /* This function handles all Bluetooth management automatically */
-        int err = ble_manager_send_spo2(spo2_value, pulse_rate);
+        /* Publish sensor data to zbus channel */
+        struct sensor_data data = {.pulse = pulse_rate, .spo2 = spo2_value};
+
+        int err = zbus_chan_pub(&sensor_data_chan, &data, K_NO_WAIT);
         if (err) {
-            LOG_ERR("Failed to send SpO2 data (err %d)", err);
+            LOG_ERR("Failed to publish sensor data to zbus (err %d)", err);
+        } else {
+            LOG_INF("Published sensor data to zbus: pulse=%d, spo2=%d",
+                    pulse_rate, spo2_value);
         }
 
         /* Wait 10 seconds before next measurement */

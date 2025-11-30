@@ -5,24 +5,6 @@
 #include <stdbool.h>
 
 /**
- * @brief Data types that can be sent via Bluetooth
- */
-enum ble_data_type {
-    BLE_DATA_TYPE_SPO2, /**< SpO2 (Oxygen Saturation) data */
-    BLE_DATA_TYPE_HRS,  /**< HRS (Heart Rate Service) data */
-};
-
-/**
- * @brief Initialize BLE Manager
- *
- * This function initializes the high-level Bluetooth management service.
- * It should be called once at system startup.
- *
- * @return 0 on success, negative error code on failure
- */
-int ble_manager_init(void);
-
-/**
  * @brief Wait for first connection with extended timeout
  *
  * This function enables Bluetooth and waits for the first connection
@@ -34,30 +16,18 @@ int ble_manager_init(void);
 int ble_manager_wait_for_first_connection(void);
 
 /**
- * @brief Send data via Bluetooth
+ * @brief Send sensor data (heartrate and SpO2) via Bluetooth
  *
- * This is a high-level universal function that:
- * - Enables Bluetooth if disabled
- * - Waits for connection and notification subscription
- * - Sends the data via GATT notifications based on data type
- * - Optionally disables Bluetooth after sending (if no active connections)
+ * This is the main unified function for sending sensor data. It sends:
+ * - Heartrate to HRS (Heart Rate Service) - only heartrate
+ * - Heartrate and SpO2 to SpO2 service - both values
  *
- * @param data_type Type of data to send (SPO2, HRS, etc.)
- * @param value Data value (for SPO2: 0-100, for HRS: ignored)
+ * @param heartrate Heart rate in bpm (beats per minute)
+ * @param spo2 SpO2 value (oxygen saturation)
  *
  * @return 0 on success, negative error code on failure
  */
-int ble_manager_send_data(enum ble_data_type data_type, uint8_t value);
-
-/**
- * @brief Send SpO2 data via Bluetooth (convenience wrapper)
- *
- * @param spo2_value SpO2 value in percent (0-100)
- * @param pulse_rate Heart rate in beats per minute (bpm)
- *
- * @return 0 on success, negative error code on failure
- */
-int ble_manager_send_spo2(uint8_t spo2_value, uint16_t pulse_rate);
+int ble_manager_send_sensor_data(uint16_t heartrate, uint16_t spo2);
 
 /**
  * @brief Enable Bluetooth and wait for connection
@@ -93,19 +63,5 @@ int ble_manager_disable_if_idle(void);
  * @return 0 on success, negative error code on failure
  */
 int ble_manager_on_disconnected(void);
-
-/**
- * @brief Check if Bluetooth is enabled
- *
- * @return true if Bluetooth is enabled, false otherwise
- */
-bool ble_manager_is_enabled(void);
-
-/**
- * @brief Check if there are active connections
- *
- * @return true if there are active connections, false otherwise
- */
-bool ble_manager_has_connections(void);
 
 #endif /* BLE_MANAGER_H */

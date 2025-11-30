@@ -38,12 +38,6 @@ static struct bt_conn *current_conn;
 /* Forward declaration */
 void hrs_notify(void);
 
-static void hrs_timer_handler(struct k_timer *timer)
-{
-    ARG_UNUSED(timer);
-    hrs_notify();
-}
-
 static void hrmc_ccc_cfg_changed(const struct bt_gatt_attr *attr,
                                  uint16_t value)
 {
@@ -89,21 +83,14 @@ static struct bt_gatt_service hrs_svc = {
     .attr_count = 0,
 };
 
-void hrs_notify(void)
+void hrs_send(uint16_t heartrate_value)
 {
     static uint8_t hrm[2];
     struct bt_conn *conn = current_conn;
+    uint8_t hr_value;
 
-    /* Heartrate measurements simulation */
-    if (!simulate_hrm) {
-        return;
-    }
-
-    /* Simulate realistic heart rate variation (90-160 bpm) */
-    heartrate++;
-    if (heartrate > 160U) {
-        heartrate = 90U;
-    }
+    /* Clamp heartrate to uint8_t range (0-255) */
+    hr_value = (heartrate_value > 255) ? 255 : (uint8_t)heartrate_value;
 
     /* Format heart rate measurement according to HRS spec:
      * Byte 0: Flags (bit 0: Heart Rate Value Format, bit 1: Sensor Contact
@@ -111,16 +98,16 @@ void hrs_notify(void)
      * Byte 1: Heart Rate Value (UINT8)
      */
     hrm[0] = 0x06; /* uint8, sensor contact detected */
-    hrm[1] = heartrate;
+    hrm[1] = hr_value;
 
     /* Send notification to all connected devices */
     if (conn != NULL) {
         bt_gatt_notify(conn, &hrs_svc.attrs[1], &hrm, sizeof(hrm));
-        ble_log_info("HRS: Heartrate %d bpm sent", heartrate);
+        ble_log_info("HRS: Heartrate %d bpm sent", hr_value);
     } else {
         /* If no specific connection, notify all */
         bt_gatt_notify(NULL, &hrs_svc.attrs[1], &hrm, sizeof(hrm));
-        ble_log_info("HRS: Heartrate %d bpm sent (broadcast)", heartrate);
+        ble_log_info("HRS: Heartrate %d bpm sent (broadcast)", hr_value);
     }
 }
 
@@ -135,12 +122,6 @@ int hrs_service_register(uint8_t blsc)
 
     /* Set body sensor location */
     hrs_blsc = blsc;
-
-    /* Initialize timer if not already done */
-    if (!hrs_timer_initialized) {
-        k_timer_init(&hrs_timer, hrs_timer_handler, NULL);
-        hrs_timer_initialized = true;
-    }
 
     /* Initialize service structure */
     hrs_svc.attrs = hrs_attrs;
