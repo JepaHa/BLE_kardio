@@ -102,6 +102,139 @@
   - Всего: 7 байт
 - **Отправка данных**: через функцию `spo2_send()`, вызываемую из BLE менеджера
 
+## Диаграммы
+
+### Архитектура системы
+
+```mermaid
+graph TB
+    subgraph "Инициализация"
+        Main[main.c<br/>Точка входа]
+        Main -->|ble_init| BLEInit[BLE/ble_init.c<br/>Инициализация BLE]
+        Main -->|spo2_simulator_init| Simulator[simulator/spo2_simulator.c<br/>Симулятор данных]
+    end
+    
+    subgraph "Генерация данных"
+        Simulator -->|Каждые 10 сек| Generate[Генерация данных<br/>SpO2: 95-100%<br/>Pulse: 60-100 bpm]
+        Generate -->|zbus_chan_pub| ZbusChannel[zbus/zbus_channels.c<br/>sensor_data_chan]
+    end
+    
+    subgraph "Обработка данных"
+        ZbusChannel -->|Автоматический вызов| BLEManager[BLE/ble_manager.c<br/>BLE Менеджер]
+        BLEManager -->|ble_manager_send_sensor_data| CheckBT{Bluetooth<br/>включен?}
+        CheckBT -->|Нет| EnableBT[ble_enable_stack<br/>Включение Bluetooth]
+        CheckBT -->|Да| WaitConn[Ожидание подключения<br/>таймаут: 10/60 сек]
+        EnableBT -->|Запуск рекламы| WaitConn
+    end
+    
+    subgraph "Отправка данных"
+        WaitConn -->|Подключение установлено| SendData[Отправка данных]
+        SendData -->|hrs_send| HRSService[BLE/GATT/hrs.c<br/>Heart Rate Service]
+        SendData -->|spo2_send| SPO2Service[BLE/GATT/spo2.c<br/>SpO2 Service]
+        HRSService -->|bt_gatt_notify| Client[BLE Клиент]
+        SPO2Service -->|bt_gatt_notify| Client
+    end
+    
+    subgraph "Экономия энергии"
+        SendData -->|После отправки| DisableBT[ble_disable_stack<br/>Отключение Bluetooth]
+        DisableBT -->|Ожидание| Simulator
+    end
+    
+    style Main fill:#e1f5ff
+    style Simulator fill:#fff4e1
+    style BLEManager fill:#e8f5e9
+    style HRSService fill:#f3e5f5
+    style SPO2Service fill:#f3e5f5
+    style Client fill:#ffebee
+```
+
+### Последовательность взаимодействий
+
+```mermaid
+sequenceDiagram
+    participant Sim as Симулятор SpO2
+    participant Zbus as Zbus Channel
+    participant Mgr as BLE Менеджер
+    participant Init as BLE Init
+    participant HRS as HRS Service
+    participant SpO2 as SpO2 Service
+    participant Client as BLE Клиент
+    
+    Note over Sim: Каждые 10 секунд
+    Sim->>Zbus: Публикация данных<br/>(pulse, spo2)
+    Zbus->>Mgr: Автоматический вызов<br/>ble_manager_sensor_data_handler
+    
+    Mgr->>Mgr: Проверка состояния Bluetooth
+    alt Bluetooth выключен
+        Mgr->>Init: ble_enable_stack()
+        Init->>Init: bt_enable()
+        Init->>Init: Запуск рекламы
+        Init-->>Mgr: Bluetooth включен
+    end
+    
+    Mgr->>Mgr: Ожидание подключения<br/>(таймаут 10/60 сек)
+    
+    Client->>Init: Подключение к устройству
+    Init->>HRS: hrs_set_connection()
+    Init->>SpO2: spo2_set_connection()
+    Init-->>Client: Подключение установлено
+    
+    Mgr->>HRS: hrs_send(heartrate)
+    Mgr->>SpO2: spo2_send(spo2, heartrate)
+    HRS->>Client: bt_gatt_notify()<br/>Heart Rate
+    SpO2->>Client: bt_gatt_notify()<br/>SpO2 + Pulse
+    
+    Mgr->>Mgr: Ожидание 100мс
+    Mgr->>Init: ble_disable_stack()
+    Init->>Init: bt_disable()
+    Init-->>Mgr: Bluetooth отключен
+    
+    Note over Sim: Следующая итерация через 10 сек
+```
+
+### Поток данных (Dataflow)
+
+```mermaid
+flowchart LR
+    subgraph "Источник данных"
+        Sim[Симулятор SpO2<br/>Поток генерации]
+        Sim -->|Каждые 10 сек| Data[Данные:<br/>pulse: 60-100 bpm<br/>spo2: 95-100%]
+    end
+    
+    subgraph "Канал передачи"
+        Data -->|zbus_chan_pub| Channel[Zbus Channel<br/>sensor_data_chan]
+    end
+    
+    subgraph "Обработчик"
+        Channel -->|zbus listener| Handler[BLE Manager<br/>sensor_data_handler]
+    end
+    
+    subgraph "Управление Bluetooth"
+        Handler -->|ble_manager_send_sensor_data| Manager[BLE Manager<br/>Управление жизненным циклом]
+        Manager -->|Включение| BT[Bluetooth Stack<br/>Включен/Выключен]
+        BT -->|Реклама| Adv[Advertising<br/>BLE_Kardio]
+    end
+    
+    subgraph "GATT Сервисы"
+        Manager -->|hrs_send| HRS[HRS Service<br/>UUID: 0x180D]
+        Manager -->|spo2_send| SPO2[SpO2 Service<br/>UUID: 0x1822]
+    end
+    
+    subgraph "Клиент"
+        Adv -.->|Сканирование| Client[BLE Клиент<br/>nRF Connect и др.]
+        Client -.->|Подключение| BT
+        HRS -->|Notify| Client
+        SPO2 -->|Notify| Client
+    end
+    
+    style Sim fill:#fff4e1
+    style Channel fill:#e1f5ff
+    style Manager fill:#e8f5e9
+    style HRS fill:#f3e5f5
+    style SPO2 fill:#f3e5f5
+    style Client fill:#ffebee
+```
+
 ## Поток работы
 
 ### Инициализация
